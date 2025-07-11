@@ -1,0 +1,93 @@
+import { Router } from "express";
+import { storage } from "./storage";
+import { translateCodeSchema, formatCodeSchema } from "../shared/schema";
+import { log } from "./vite";
+import { fallbackTranslate } from "./fallbackTranslator";
+import { languageTemplates, demoExamples } from "./languageTemplates";
+
+const router = Router();
+
+// Helper function to get error message
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+// Rule-based code translator - no AI dependencies
+
+// Get all workspaces
+router.get("/api/workspaces", async (req, res) => {
+  try {
+    const workspaces = await storage.getWorkspaces();
+    res.json(workspaces);
+  } catch (error) {
+    log(`Error fetching workspaces: ${getErrorMessage(error)}`, "api");
+    res.status(500).json({ error: "Failed to fetch workspaces" });
+  }
+});
+
+// Create workspace
+router.post("/api/workspaces", async (req, res) => {
+  try {
+    const workspace = await storage.createWorkspace(req.body);
+    res.json(workspace);
+  } catch (error) {
+    log(`Error creating workspace: ${getErrorMessage(error)}`, "api");
+    res.status(500).json({ error: "Failed to create workspace" });
+  }
+});
+
+// Get recent translations
+router.get("/api/translations/recent", async (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    const translations = await storage.getRecentTranslations(limit);
+    res.json(translations);
+  } catch (error) {
+    log(`Error fetching recent translations: ${getErrorMessage(error)}`, "api");
+    res.status(500).json({ error: "Failed to fetch translations" });
+  }
+});
+
+// Get supported languages
+router.get("/api/languages", (req, res) => {
+  const languages = Object.keys(languageTemplates).map(key => ({
+    id: key,
+    name: languageTemplates[key].name,
+    extension: languageTemplates[key].extension
+  }));
+  res.json(languages);
+});
+
+// Get demo examples
+router.get("/api/demo/:type", (req, res) => {
+  const { type } = req.params;
+  const demo = demoExamples[type as keyof typeof demoExamples];
+  
+  if (!demo) {
+    return res.status(404).json({ error: "Demo type not found" });
+  }
+  
+  res.json(demo);
+});
+
+// Get all demo types
+router.get("/api/demos", (req, res) => {
+  const demos = Object.keys(demoExamples).map(key => ({
+    type: key,
+    description: demoExamples[key as keyof typeof demoExamples].description
+  }));
+  res.json(demos);
+});
+
+// Quick translation demo endpoint
+router.post("/api/translate/demo", (req, res) => {
+  const { sourceLanguage, targetLanguage, demoType } = req.body;
+  
+  if (!sourceLanguage || !targetLanguage || !demoType) {
+    return res.status(400).json({ error: "Missing required parameters" });
+  }
+
+  const demo = demoExamples[demoType as keyof typeof demoExamples];
+  if (!demo) {
+    return res.status(404).json({ error: "Demo type not found" });
+  }
